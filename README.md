@@ -1,39 +1,84 @@
 # Review Insights API
 
-A small backend project built with Node.js, Express, and SQLite.
+A backend-focused API for product reviews, moderation, mock analysis, and product rating summaries.
 
-This project was inspired by a review analysis challenge. The goal is not to build a full e-commerce system. The goal is to build a focused backend API for product reviews, with realistic backend concerns:
+The project models a simple review workflow where customers can review purchased products, reviews start as pending, and only approved reviews affect public product ratings.
 
-- preventing duplicate reviews for the same purchased item;
-- allowing the same user to review the same product again after a separate purchase;
-- moderating reviews before they affect product ratings;
-- avoiding recalculating product ratings on every page load;
-- using transactions to keep review status and rating summaries consistent;
-- connecting review data to simple mock analysis;
-- filtering reviews by moderation status;
-- providing a very small frontend demo for presentation and manual testing.
+A minimal static frontend is included for manual testing and demonstration of the API flow.
 
-## Tech stack
+## Table of Contents
+
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Domain Model](#domain-model)
+- [Review Lifecycle](#review-lifecycle)
+- [Key Design Decisions](#key-design-decisions)
+- [Getting Started](#getting-started)
+- [Testing](#testing)
+- [Seed Data](#seed-data)
+- [API Reference](#api-reference)
+- [Example Workflow](#example-workflow)
+- [AI Assistance Note](#ai-assistance-note)
+- [Future Improvements](#future-improvements)
+
+## Features
+
+- Create reviews only for completed order items.
+- Prevent duplicate reviews for the same purchased item.
+- Allow repeat reviews for the same product when they come from different purchases.
+- Keep new reviews in a `pending` moderation state.
+- Approve or reject pending reviews.
+- Allow full review editing only while a review is still `pending`.
+- Update product rating summaries only when reviews are approved.
+- Store simple mock analysis for review comments.
+- Filter reviews by moderation status.
+- Run automated integration tests with Jest and Supertest.
+- Use a minimal static frontend for manual testing.
+
+## Tech Stack
 
 - Node.js
 - Express
 - SQLite
 - better-sqlite3
-- Jest and Supertest
-- Plain HTML, CSS, and JavaScript for the demo frontend
+- Jest
+- Supertest
+- Plain HTML, CSS, and JavaScript
 
-## Main idea
+## Project Structure
 
-Users can review products they purchased.
+```txt
+src/
+  app.js
+  database.js
+  controllers/
+  middleware/
+  routes/
+  scripts/
+  services/
+  utils/
+public/
+  index.html
+  styles.css
+  app.js
+tests/
+  reviews.test.js
+```
 
-The important design decision is that a review is linked to an `order_item`, not directly to a `user_id` and `product_id`.
+### Main folders
 
-That means:
+- `routes/` maps HTTP endpoints to controller functions.
+- `controllers/` handles request parameters, request bodies, responses, and errors.
+- `services/` contains the business logic.
+- `middleware/` validates requests and handles errors.
+- `database.js` defines the SQLite schema, seed data, and database reset logic.
+- `tests/` contains integration tests for the review lifecycle.
+- `public/` contains the minimal frontend.
 
-- one purchased item can only be reviewed once;
-- the same user can review the same product again if they bought it again in another order.
+## Domain Model
 
-## Database tables
+The database contains the following main tables:
 
 - `users`
 - `products`
@@ -43,9 +88,14 @@ That means:
 - `review_analysis`
 - `product_review_summary`
 
-## Review lifecycle
+Reviews are linked to `order_item_id`, not directly to only `user_id` and `product_id`.
 
-The review lifecycle is intentionally simple:
+This means the rule is **one review per purchased item**:
+
+- the same purchased item can only be reviewed once;
+- the same user can review the same product again if they bought it again in another order.
+
+## Review Lifecycle
 
 ```txt
 new review -> pending
@@ -57,56 +107,48 @@ rejected -> final state
 
 A review can only be edited while it is still `pending`.
 
-Once a review is approved, it has already affected the product rating summary, so editing is blocked in this MVP. Once a review is rejected, it is also treated as final.
+Approved and rejected reviews are final states in this version. This keeps the lifecycle simple and avoids extra logic for recalculating product summaries after approved reviews have already affected ratings.
 
-This keeps the project easier to reason about and avoids extra complexity around removing old ratings from summaries when approved reviews are edited.
+## Key Design Decisions
 
-## Main backend concerns
+### 1. Reviews are linked to order items
 
-### 1. Duplicate reviews
-
-The `reviews` table has:
+The `reviews` table uses:
 
 ```sql
 UNIQUE(order_item_id)
 ```
 
-This prevents the same purchased item from being reviewed twice.
+This prevents the same purchased item from being reviewed more than once.
 
-### 2. Verified purchase rule
+The service layer also checks for an existing review before inserting a new one. That check is used to return a clear API error, while the database constraint remains the final protection against duplicates.
+
+### 2. Reviews require completed orders
 
 Before creating a review, the API checks that:
 
 - the `order_item_id` exists;
-- the order status is `completed`.
+- the related order has status `completed`.
 
-This means users cannot review products from pending or cancelled orders.
+Reviews for `pending` or `cancelled` orders are blocked.
 
-### 3. Product rating performance
+### 3. Product summaries are denormalized
 
-Instead of recalculating the average rating from all approved reviews every time a product page loads, the API stores:
+The product list does not recalculate ratings from all reviews on every request.
+
+Instead, the `product_review_summary` table stores:
 
 - `approved_rating_sum`
 - `approved_review_count`
+- `average_rating`
 
-in the `product_review_summary` table.
+The summary is updated when a review is approved.
 
-The average is calculated as:
+This keeps product listing queries simple and avoids repeated aggregate calculations for common read operations.
 
-```txt
-approved_rating_sum / approved_review_count
-```
+### 4. Approval uses an atomic status transition
 
-### 4. Race conditions and transactions
-
-Approving a review changes two things:
-
-1. the review status;
-2. the product review summary.
-
-Those changes happen inside a transaction.
-
-The update is also conditional:
+A review is approved only if it is currently pending:
 
 ```sql
 UPDATE reviews
@@ -114,47 +156,43 @@ SET status = 'approved'
 WHERE id = ? AND status = 'pending';
 ```
 
-This prevents the same review from being approved twice and counted twice.
+The service checks how many rows were changed:
 
-### 5. Simple review editing
+- if one row changed, the transition succeeded;
+- if zero rows changed, the review either does not exist or is not in the correct state.
 
-Editing is a full update using:
+This prevents approving the same review twice.
+
+Approval also updates `product_review_summary` inside the same transaction, so the review status and summary data stay consistent.
+
+### 5. Rejection is pending-only
+
+A review can only be rejected while it is pending.
+
+Rejected reviews do not affect product summaries.
+
+### 6. Editing is a full update
+
+Review editing uses:
 
 ```http
 PUT /api/reviews/:id
 ```
 
-The request must include both `rating` and `comment`.
+The request must include both `rating` and `comment`:
 
-Editing is only allowed while the review is still `pending`:
-
-```sql
-UPDATE reviews
-SET rating = ?, comment = ?
-WHERE id = ? AND status = 'pending';
+```json
+{
+  "rating": 3,
+  "comment": "Updated review comment"
+}
 ```
 
-That keeps the lifecycle simple. Approved and rejected reviews are final in this MVP.
+Since only two fields are editable, a full update keeps validation and lifecycle rules simple.
 
+### 7. Mock review analysis is separated
 
-
-### 6. Review listing for moderation
-
-The product frontend does not need to fetch every review just to display average ratings. Product lists use `product_review_summary` for `averageRating` and `approvedReviewCount`.
-
-The review listing endpoint exists mainly for moderation:
-
-```http
-GET /api/reviews?status=pending
-GET /api/reviews?status=approved
-GET /api/reviews?status=rejected
-```
-
-This makes it easy to build an admin/moderation screen without mixing that flow with the customer-facing product list.
-
-### 7. Mock analysis
-
-When a review is created or edited, the comment is analysed by a simple mock analysis service.
+The `analysis.service.js` file contains a simple mock analysis function.
 
 It returns:
 
@@ -163,21 +201,37 @@ It returns:
 - urgency;
 - summary.
 
-This is intentionally simple. In a real implementation, this could later be replaced by an AI API or a proper NLP model.
+This is not a real AI implementation. It is a placeholder showing how review comments could later be transformed into structured insights.
 
-## How to run
+Because it is isolated in its own service, it could be replaced later with a real AI or NLP API without changing the review workflow significantly.
 
-Install dependencies:
+## Getting Started
+
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-Start the server:
+### 2. Reset and seed the database
+
+```bash
+npm run reset-db
+```
+
+### 3. Start the server
+
+```bash
+npm start
+```
+
+For development with automatic restart:
 
 ```bash
 npm run dev
 ```
+
+### 4. Open the API or frontend
 
 The API runs at:
 
@@ -185,97 +239,79 @@ The API runs at:
 http://localhost:3000
 ```
 
-The simple demo frontend is served by the same Express app at:
+The frontend is served by the same Express app:
 
 ```txt
 http://localhost:3000
 ```
 
-The frontend is intentionally minimal. It exists only to make the backend flow easier to present and manually test.
+## Testing
 
-Reset the database:
-
-```bash
-npm run reset-db
-```
-
-Run the automated tests:
+Run the automated test suite:
 
 ```bash
 npm test
 ```
 
-The tests use Jest and Supertest. They focus on the main business rules instead of testing every small implementation detail: duplicate prevention, completed-order validation, pending-only editing, approval/rejection status transitions, status filtering, and product summary updates.
+The tests use Jest and Supertest. They reset the database before each test and call the Express app directly.
 
-## Simple frontend demo
+The test suite covers the main lifecycle rules:
 
-The project includes a small static frontend in:
+- valid review creation returns `201`;
+- duplicate reviews for the same `orderItemId` return `409`;
+- reviews for non-completed orders are blocked;
+- repeat product reviews are allowed when they come from different `order_item` records;
+- pending reviews can be edited with full `PUT`;
+- approved reviews cannot be edited;
+- approved reviews cannot be approved again;
+- approved reviews cannot be rejected;
+- rejected reviews do not update product summaries;
+- approved reviews update product summaries;
+- reviews can be filtered by status.
 
-```txt
-public/
-  index.html
-  styles.css
-  app.js
-```
+## Seed Data
 
-It is not intended to be a full frontend application. It is only a presentation and manual testing interface for the backend API.
-
-The frontend can:
-
-- load products and their rating summaries;
-- create a pending review;
-- list reviews by moderation status;
-- edit a pending review using full `PUT`;
-- approve or reject pending reviews;
-- fetch a product review summary;
-- display the latest API response or error.
-
-Strong interview explanation:
-
-“The frontend is intentionally simple. I added it only to present and manually test the backend workflow more easily. The main focus of the project is still the API design, business rules, database constraints, transactions, and automated tests.”
-
-
-## Seed data
-
-The database is automatically seeded with sample users, products, orders, and order items.
+The database is seeded with sample users, products, orders, and order items.
 
 Useful seed cases:
 
-- `orderItemId: 1` can be reviewed.
-- `orderItemId: 3` is the same user buying the same product again in a different order, so it can also be reviewed.
+- `orderItemId: 1` belongs to a completed order and can be reviewed.
+- `orderItemId: 3` represents the same user buying the same product again in a different order, so it can also be reviewed.
 - `orderItemId: 4` belongs to a pending order, so it cannot be reviewed.
 
-## API endpoints
+## API Reference
 
-### Health check
+### Health
 
-```http
-GET /api/health
-```
+#### `GET /api/health`
 
-### Get products
+Checks whether the API is running.
 
-```http
-GET /api/products
-```
+---
 
-### Get product review summary
+### Products
 
-```http
-GET /api/products/:id/review-summary
-```
+#### `GET /api/products`
 
-### Get approved product reviews
+Returns all products with their rating summary.
 
-```http
-GET /api/products/:id/reviews
-```
+The rating summary comes from `product_review_summary`.
 
-### Create review
+#### `GET /api/products/:id/review-summary`
 
-```http
-POST /api/reviews
-```
+Returns the approved review count and average rating for a single product.
+
+#### `GET /api/products/:id/reviews`
+
+Returns approved reviews for a single product.
+
+---
+
+### Reviews
+
+#### `POST /api/reviews`
+
+Creates a new pending review.
 
 Example body:
 
@@ -287,28 +323,35 @@ Example body:
 }
 ```
 
-### Get reviews
+Rules:
+
+- the order item must exist;
+- the related order must be completed;
+- the order item must not have already been reviewed;
+- rating must be between 1 and 5;
+- comment is required.
+
+#### `GET /api/reviews`
+
+Returns reviews.
+
+Optional status filter:
 
 ```http
-GET /api/reviews
 GET /api/reviews?status=pending
 GET /api/reviews?status=approved
 GET /api/reviews?status=rejected
 ```
 
-The status filter is useful for the moderation workflow. For example, a moderator can request only pending reviews before deciding whether to approve or reject them.
+This is useful for moderation workflows.
 
-### Get one review
+#### `GET /api/reviews/:id`
 
-```http
-GET /api/reviews/:id
-```
+Returns one review by ID.
 
-### Fully edit a pending review
+#### `PUT /api/reviews/:id`
 
-```http
-PUT /api/reviews/:id
-```
+Fully updates a pending review.
 
 Example body:
 
@@ -319,74 +362,108 @@ Example body:
 }
 ```
 
-### Approve review
+Rules:
+
+- only pending reviews can be edited;
+- both `rating` and `comment` are required.
+
+#### `PATCH /api/reviews/:id/approve`
+
+Approves a pending review.
+
+Approving a review also updates the related product summary.
+
+#### `PATCH /api/reviews/:id/reject`
+
+Rejects a pending review.
+
+Rejected reviews do not update product summaries.
+
+## Example Workflow
+
+1. Reset the database:
+
+```bash
+npm run reset-db
+```
+
+2. Start the server:
+
+```bash
+npm start
+```
+
+3. Check the products:
 
 ```http
-PATCH /api/reviews/:id/approve
+GET /api/products
 ```
 
-### Reject review
+4. Create a review:
 
 ```http
-PATCH /api/reviews/:id/reject
+POST /api/reviews
 ```
 
-Only pending reviews can be rejected. Approved and rejected reviews are final in this MVP.
-
-## Automated tests
-
-The project includes a small integration test suite in:
-
-```txt
-tests/reviews.test.js
+```json
+{
+  "orderItemId": 1,
+  "rating": 5,
+  "comment": "Great product"
+}
 ```
 
-The tests call the Express app directly with Supertest and reset the SQLite database before each test. The goal is to prove the core lifecycle rules are protected:
+5. Check pending reviews:
 
-- valid review creation returns `201`;
-- duplicate review for the same `orderItemId` returns `409`;
-- reviews for non-completed orders are blocked;
-- repeat product reviews are allowed when they come from different `order_item` records;
-- pending reviews can be edited with full `PUT`;
-- approved reviews cannot be edited;
-- approval updates `product_review_summary`;
-- rejected reviews do not update the product summary;
-- approved reviews cannot be rejected;
-- review listing can be filtered by status.
+```http
+GET /api/reviews?status=pending
+```
 
-## Suggested demo flow
+6. Edit the review while it is still pending:
 
-You can run this flow through the simple frontend at `http://localhost:3000` or through Thunder Client.
+```http
+PUT /api/reviews/1
+```
 
-1. `GET /api/health`
-2. `GET /api/products` to show products with average rating and review count.
-3. `POST /api/reviews` with `orderItemId: 1`.
-4. Try `POST /api/reviews` again with the same `orderItemId` to show duplicate prevention.
-5. `GET /api/reviews?status=pending` to show the moderation queue.
-6. `PUT /api/reviews/1` while the review is still pending.
-7. `PATCH /api/reviews/1/approve`.
-8. `GET /api/products/1/review-summary` to show that the approved review updated the summary.
-9. Try `PUT /api/reviews/1` again to show approved reviews cannot be edited.
-10. Create another review with `orderItemId: 3`.
-11. `PATCH /api/reviews/2/reject`.
-12. Try `PATCH /api/reviews/1/reject` to show approved reviews cannot be rejected.
-13. Try `PUT /api/reviews/2` to show rejected reviews cannot be edited.
+```json
+{
+  "rating": 4,
+  "comment": "Updated comment after thinking again"
+}
+```
 
-## Interview explanation
+7. Approve the review:
 
-This is a backend-focused project inspired by the AI Challenge. I wanted to connect my data background with backend development, so I built a review system where customer feedback is validated, stored, analysed, moderated, and used to update product rating summaries.
+```http
+PATCH /api/reviews/1/approve
+```
 
-The main design decision is linking reviews to `order_item_id`. This prevents duplicate reviews for the same purchase while still allowing a user to review the same product again if they bought it again in another order.
+8. Check the product summary:
 
-I also added a `product_review_summary` table to avoid recalculating average ratings on every product page load. Approval is wrapped in a transaction because it changes both the review status and the product summary. Rejection is simpler because it only moves a pending review to rejected and does not affect the summary.
+```http
+GET /api/products/1/review-summary
+```
 
-I added a focused Jest and Supertest integration test suite for the review lifecycle. The tests are not trying to cover every line of code; they protect the most important business rules, such as duplicate prevention, pending-only approval/rejection, editing only before approval, and product summary updates only after approval.
+9. Try to edit the approved review:
 
-I intentionally removed image support from the MVP because it would add file upload handling, cloud storage, file validation, and image moderation concerns. If image support were added later, I would store the actual files in cloud storage and keep only the URL and metadata in a separate table linked to the review.
+```http
+PUT /api/reviews/1
+```
 
+This should return a conflict response because approved reviews are final.
 
-## Note on AI assistance
+## AI Assistance Note
 
-AI tools were used as a development assistant during this project, especially for brainstorming, refactoring suggestions, test ideas, and the simple frontend demo.
+AI tools were used as a development assistant during this project for brainstorming, refactoring suggestions, test ideas, documentation structure, and the minimal frontend demo.
 
-The frontend is intentionally basic and exists only for presentation. The backend scope decisions, review lifecycle, database model, and final behaviour were reviewed and adapted to keep the project focused and explainable.
+The project scope, backend decisions, simplifications, and final implementation were reviewed and adapted to keep the API focused and explainable.
+
+## Future Improvements
+
+- Authentication and authorization.
+- Admin-only moderation permissions.
+- Pagination for large review lists.
+- Real AI or NLP analysis instead of mock analysis.
+- Production logging and monitoring.
+- Deployment configuration.
+- Optional image support using cloud storage and a separate image metadata table.
