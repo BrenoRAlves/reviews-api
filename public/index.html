@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Review Insights API Demo</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Presentation demo UI</p>
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button id="healthButton" type="button">Check API health</button>
+      <button id="loadProductsButton" type="button">Load products</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel wide">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Customer-facing data</p>
+          <h2>Products</h2>
+        </div>
+        <p class="hint">Ratings come from <code>product_review_summary</code>.</p>
+      </div>
+      <div id="products" class="card-grid empty-state">Click “Load products” to fetch products.</div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Create</p>
+          <h2>New review</h2>
+        </div>
+      </div>
+      <form id="createReviewForm" class="stack">
+        <label>
+          Order item ID
+          <input id="orderItemId" type="number" min="1" value="1" required />
+        </label>
+        <label>
+          Rating
+          <select id="createRating" required>
+            <option value="5">5</option>
+            <option value="4">4</option>
+            <option value="3">3</option>
+            <option value="2">2</option>
+            <option value="1">1</option>
+          </select>
+        </label>
+        <label>
+          Comment
+          <textarea id="createComment" rows="4" required>Great product</textarea>
+        </label>
+        <button type="submit">Create pending review</button>
+      </form>
+      <p class="hint">
+        Seed data: <code>orderItemId 1</code> and <code>3</code> are completed purchases. <code>4</code> belongs to a pending order.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Edit</p>
+          <h2>Update pending review</h2>
+        </div>
+      </div>
+      <form id="updateReviewForm" class="stack">
+        <label>
+          Review ID
+          <input id="updateReviewId" type="number" min="1" value="1" required />
+        </label>
+        <label>
+          Rating
+          <select id="updateRating" required>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="3">3</option>
+            <option value="2">2</option>
+            <option value="1">1</option>
+          </select>
+        </label>
+        <label>
+          Comment
+          <textarea id="updateComment" rows="4" required>Updated comment after thinking again</textarea>
+        </label>
+        <button type="submit">Full PUT update</button>
+      </form>
+    </section>
+
+    <section class="panel wide">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Moderation</p>
+          <h2>Review queue</h2>
+        </div>
+        <div class="inline-controls">
+          <select id="statusFilter">
+            <option value="pending">pending</option>
+            <option value="approved">approved</option>
+            <option value="rejected">rejected</option>
+            <option value="">all</option>
+          </select>
+          <button id="loadReviewsButton" type="button">Load reviews</button>
+        </div>
+      </div>
+      <div id="reviews" class="review-list empty-state">Click “Load reviews” to fetch the moderation queue.</div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Product</p>
+          <h2>Review summary</h2>
+        </div>
+      </div>
+      <form id="summaryForm" class="inline-form">
+        <label>
+          Product ID
+          <input id="summaryProductId" type="number" min="1" value="1" required />
+        </label>
+        <button type="submit">Get summary</button>
+      </form>
+      <div id="summaryResult" class="result-card empty-state">No summary loaded yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Debug</p>
+          <h2>Latest API response</h2>
+        </div>
+      </div>
+      <pre id="responseOutput">No request sent yet.</pre>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
