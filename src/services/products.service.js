@@ -26,6 +26,32 @@ function getAllProducts() {
   }));
 }
 
+function getProductById(productId) {
+  const product = db.prepare(`
+    SELECT
+    products.id,
+    products.name,
+    products.category,
+    products.price,
+    COALESCE(product_review_summary.approved_rating_sum, 0) AS approvedRatingSum,
+    COALESCE(product_review_summary.approved_review_count, 0) AS approvedReviewCount
+    FROM products
+    LEFT JOIN product_review_summary ON products.id = product_review_summary.product_id
+    WHERE products.id = ?     
+    `).get(productId);
+
+    if (!product) {
+      throw createHttpError(404, "Product not found");
+    }
+
+    return {
+      ...product,
+      averageRating: product.approvedReviewCount === 0
+      ? 0
+      : Number((product.approvedRatingSum / product.approvedReviewCount).toFixed(2))
+    }
+}
+
 function getProductReviewSummary(productId) {
   const product = db.prepare(`
     SELECT id, name
@@ -99,5 +125,6 @@ function getApprovedReviewsByProduct(productId) {
 module.exports = {
   getAllProducts,
   getProductReviewSummary,
-  getApprovedReviewsByProduct
+  getApprovedReviewsByProduct,
+  getProductById
 };

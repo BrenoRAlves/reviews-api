@@ -12,6 +12,18 @@ function getAllProducts(req, res, next) {
   }
 }
 
+function getProductById(req, res, next) {
+  try {
+    const product = productsService.getProductById(req.params.id);
+
+    res.status(200).json({
+      data: product
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function getProductReviewSummary(req, res, next) {
   try {
     const summary = productsService.getProductReviewSummary(req.params.id);
@@ -39,5 +51,6 @@ function getApprovedReviewsByProduct(req, res, next) {
 module.exports = {
   getAllProducts,
   getProductReviewSummary,
-  getApprovedReviewsByProduct
+  getApprovedReviewsByProduct,
+  getProductById
 };
