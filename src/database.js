@@ -5,7 +5,7 @@ const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "database.db");
 const db = new Database(dbPath);
 
 db.pragma("foreign_keys = ON");
-db.pragma("journal_mode = WAL");
+db.pragma("journal_mode = DELETE");
 
 function initDatabase() {
   db.exec(`
