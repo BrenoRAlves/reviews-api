@@ -95,6 +95,86 @@ This means the rule is **one review per purchased item**:
 - the same purchased item can only be reviewed once;
 - the same user can review the same product again if they bought it again in another order.
 
+## Database Schema
+
+The project uses a small relational schema to model users, products, orders, order items, reviews, review analysis, and product rating summaries.
+
+```mermaid
+erDiagram
+    USERS {
+        integer id PK
+        text name
+        text email UK
+        text created_at
+    }
+
+    PRODUCTS {
+        integer id PK
+        text name
+        text category
+        real price
+        text created_at
+    }
+
+    ORDERS {
+        integer id PK
+        integer user_id FK
+        text status
+        text created_at
+    }
+
+    ORDER_ITEMS {
+        integer id PK
+        integer order_id FK
+        integer product_id FK
+        integer quantity
+        real price_at_purchase
+    }
+
+    REVIEWS {
+        integer id PK
+        integer order_item_id FK,UK
+        integer rating
+        text comment
+        text status
+        text created_at
+        text updated_at
+    }
+
+    REVIEW_ANALYSIS {
+        integer id PK
+        integer review_id FK,UK
+        text sentiment
+        text topic
+        text urgency
+        text summary
+        text created_at
+    }
+
+    PRODUCT_REVIEW_SUMMARY {
+        integer product_id PK,FK
+        integer approved_rating_sum
+        integer approved_review_count
+        text updated_at
+    }
+
+    USERS ||--o{ ORDERS : places
+    ORDERS ||--o{ ORDER_ITEMS : contains
+    PRODUCTS ||--o{ ORDER_ITEMS : appears_in
+    ORDER_ITEMS ||--o| REVIEWS : can_have
+    REVIEWS ||--|| REVIEW_ANALYSIS : has
+    PRODUCTS ||--o| PRODUCT_REVIEW_SUMMARY : has
+```
+
+### Key relationships
+
+- A user can have many orders.
+- An order can have many order items.
+- A product can appear in many order items.
+- Each order item can have at most one review.
+- Each review has one analysis record.
+- Each product can have one product review summary.
+
 ## Review Lifecycle
 
 ```txt
