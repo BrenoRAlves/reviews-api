@@ -220,7 +220,8 @@ Instead, the `product_review_summary` table stores:
 
 - `approved_rating_sum`
 - `approved_review_count`
-- `average_rating`
+
+The service layer calculates `averageRating` from `approved_rating_sum / approved_review_count`.
 
 The summary is updated when a review is approved.
 
@@ -377,6 +378,30 @@ Returns all products with their rating summary.
 
 The rating summary comes from `product_review_summary`.
 
+#### `GET /api/products/:id`
+
+Returns a single product by ID with its rating summary.
+
+Example response:
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Wireless Mouse",
+    "category": "Electronics",
+    "price": 29.99,
+    "approvedRatingSum": 0,
+    "approvedReviewCount": 0,
+    "averageRating": 0
+  }
+}
+```
+
+Possible errors:
+
+- `404 Not Found` when the product does not exist.
+
 #### `GET /api/products/:id/review-summary`
 
 Returns the approved review count and average rating for a single product.
@@ -479,7 +504,13 @@ npm start
 GET /api/products
 ```
 
-4. Create a review:
+4. Check a single product:
+
+```http
+GET /api/products/1
+```
+
+5. Create a review:
 
 ```http
 POST /api/reviews
@@ -493,13 +524,13 @@ POST /api/reviews
 }
 ```
 
-5. Check pending reviews:
+6. Check pending reviews:
 
 ```http
 GET /api/reviews?status=pending
 ```
 
-6. Edit the review while it is still pending:
+7. Edit the review while it is still pending:
 
 ```http
 PUT /api/reviews/1
@@ -512,19 +543,19 @@ PUT /api/reviews/1
 }
 ```
 
-7. Approve the review:
+8. Approve the review:
 
 ```http
 PATCH /api/reviews/1/approve
 ```
 
-8. Check the product summary:
+9. Check the product summary:
 
 ```http
 GET /api/products/1/review-summary
 ```
 
-9. Try to edit the approved review:
+10. Try to edit the approved review:
 
 ```http
 PUT /api/reviews/1
