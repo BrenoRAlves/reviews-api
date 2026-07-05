@@ -1,11 +1,6 @@
 const { db } = require("../database");
 const analysisService = require("./analysis.service");
-
-function createHttpError(statusCode, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
+const createHttpError = require("../utils/createHttpError");
 
 function getOrderItemContext(orderItemId) {
   return db.prepare(`

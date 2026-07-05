@@ -1,11 +1,5 @@
 const { db } = require("../database");
 
-function createHttpError(statusCode, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
-
 function getAllProducts() {
   return db.prepare(`
     SELECT
