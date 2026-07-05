@@ -2,11 +2,7 @@ node_modules/
 .env
 
 database.db
-database.db-shm
-database.db-wal
 
 *.db
-*.db-shm
-*.db-wal
 
 .DS_Store
